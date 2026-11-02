@@ -1,0 +1,468 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Latent Atlas</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Hanken+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: a light table. Controls on top, cluster rail left, the map in the middle, the frame inspector right,
+   and a three-row timeline underneath that shows how the three autoencoders disagree along the video. */
+:root{
+  --bg:#ECEFF2; --surface:#F6F8FA; --map:#FBFCFD; --ink:#11161C; --muted:#56626F; --line:#CBD2D9; --grid:#E3E8ED;
+  --video:#C98400; --depth:#2F5BEA; --edges:#D0306A; --accent:#2F5BEA; --on-accent:#fff;
+  --f-display:'Bricolage Grotesque','PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif;
+  --f-body:'Hanken Grotesk','PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif;
+  --f-mono:'IBM Plex Mono',ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0D1117; --surface:#151B23; --map:#0A0E13; --ink:#E7EBEF; --muted:#9AA6B2; --line:#2A333E; --grid:#161D26;
+  --video:#F2B544; --depth:#7C97FF; --edges:#FF6E9F; --accent:#7C97FF; --on-accent:#0D1117; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0D1117; --surface:#151B23; --map:#0A0E13; --ink:#E7EBEF; --muted:#9AA6B2; --line:#2A333E; --grid:#161D26;
+  --video:#F2B544; --depth:#7C97FF; --edges:#FF6E9F; --accent:#7C97FF; --on-accent:#0D1117; color-scheme:dark}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:400 14px/1.45 var(--f-body);overflow:hidden}
+button,select,input{font:inherit;color:inherit}
+button{cursor:pointer}
+.app{height:100%;display:grid;grid-template-rows:auto minmax(0,1fr) auto;gap:1px;background:var(--line)}
+.app>*{background:var(--bg);min-width:0}
+/* top bar */
+.bar{display:flex;align-items:center;gap:16px;padding:10px 16px;flex-wrap:wrap}
+.brand{font-family:var(--f-display);font-weight:700;font-size:1.35rem;letter-spacing:-.02em;margin-right:6px}
+.brand small{display:block;font:400 .68rem var(--f-mono);letter-spacing:.08em;color:var(--muted);text-transform:uppercase}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:6px;overflow:hidden}
+.seg button{background:var(--surface);border:0;border-right:1px solid var(--line);padding:6px 12px;display:flex;align-items:center;gap:7px;font-family:var(--f-mono);font-size:.8rem}
+.seg button:last-child{border-right:0}
+.seg button i{width:9px;height:9px;border-radius:50%;display:block}
+.seg button[aria-pressed="true"]{background:var(--ink);color:var(--bg)}
+label.f{display:flex;flex-direction:column;gap:2px;font:500 .64rem var(--f-mono);letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+select{background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:5px 8px;font-size:.85rem;color:var(--ink);text-transform:none;letter-spacing:0;font-family:var(--f-body)}
+.sp{flex:1}
+.btn{background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:6px 12px;font-size:.84rem}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--on-accent);font-weight:500}
+.btn:hover{border-color:var(--ink)}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+/* main */
+.main{display:grid;grid-template-columns:292px minmax(0,1fr) 300px;gap:1px;background:var(--line);min-height:0}
+.main>*{background:var(--bg);min-width:0;min-height:0}
+.rail{overflow:auto;padding:14px;display:flex;flex-direction:column;gap:14px}
+h2{font:500 .66rem var(--f-mono);letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin:0}
+.metrics{display:grid;grid-template-columns:1fr auto;gap:2px 10px;font-size:.82rem}
+.metrics dt{color:var(--muted)}
+.metrics dd{margin:0;font-family:var(--f-mono);text-align:right}
+.cl{border:1px solid var(--line);border-radius:6px;background:var(--surface);padding:10px;display:flex;flex-direction:column;gap:8px}
+.cl[aria-current="true"]{border-color:var(--ink)}
+.cl.dim{opacity:.45}
+.cl .hd{display:flex;align-items:center;gap:8px}
+.cl .sw{width:12px;height:12px;border-radius:3px;flex:none}
+.cl input{flex:1;min-width:0;background:transparent;border:0;border-bottom:1px solid transparent;padding:1px 0;font-family:var(--f-display);font-weight:700;font-size:.98rem}
+.cl input:hover,.cl input:focus{border-bottom-color:var(--line);outline:0}
+.cl .n{font:400 .74rem var(--f-mono);color:var(--muted)}
+.cl .iso{background:none;border:1px solid var(--line);border-radius:4px;font:500 .64rem var(--f-mono);padding:2px 6px;letter-spacing:.06em}
+.cl .iso[aria-pressed="true"]{background:var(--ink);color:var(--bg)}
+.th{display:grid;grid-template-columns:repeat(5,1fr);gap:3px}
+.th.o{grid-template-columns:repeat(3,1fr);width:60%}
+.th img{display:block;width:100%;aspect-ratio:16/9;object-fit:cover;border-radius:2px;cursor:pointer;background:#000;border:1px solid transparent}
+.th img:hover{border-color:var(--ink)}
+.cap{font:400 .62rem var(--f-mono);letter-spacing:.08em;color:var(--muted);text-transform:uppercase}
+/* map */
+.stage{position:relative;background:var(--map);overflow:hidden}
+#map{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none;cursor:grab}
+#map.drag{cursor:grabbing}
+.hint{position:absolute;left:12px;bottom:10px;font:400 .68rem var(--f-mono);color:var(--muted);pointer-events:none;background:color-mix(in srgb,var(--map) 80%,transparent);padding:2px 6px;border-radius:3px}
+.tip{position:absolute;pointer-events:none;background:var(--surface);border:1px solid var(--ink);border-radius:4px;padding:4px;z-index:5;display:none}
+.tip div{width:128px;height:72px;background-repeat:no-repeat;border-radius:2px}
+.tip span{display:block;font:400 .68rem var(--f-mono);padding:3px 2px 0}
+.sel{position:absolute;right:12px;top:12px;background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:10px;width:230px;display:none;flex-direction:column;gap:8px;z-index:4}
+.sel input{background:var(--bg);border:1px solid var(--line);border-radius:4px;padding:5px 7px;width:100%}
+.sel .row{display:flex;gap:6px}
+.sel small{font:400 .72rem var(--f-mono);color:var(--muted)}
+/* inspector */
+.ins{overflow:auto;padding:14px;display:flex;flex-direction:column;gap:14px}
+.ins .big{font-family:var(--f-display);font-weight:700;font-size:1.5rem;letter-spacing:-.02em;line-height:1}
+.pics{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.pics figure{margin:0;display:flex;flex-direction:column;gap:3px}
+.pics img{width:100%;aspect-ratio:16/9;object-fit:cover;border-radius:3px;background:#000;display:block}
+.chips{display:flex;flex-direction:column;gap:4px}
+.chip{display:flex;align-items:center;gap:8px;font-size:.84rem}
+.chip i{width:9px;height:9px;border-radius:50%;flex:none}
+.chip b{font-family:var(--f-mono);font-weight:500;font-size:.72rem;color:var(--muted);width:44px}
+.empty{color:var(--muted);font-size:.9rem;border:1px dashed var(--line);border-radius:6px;padding:14px}
+/* timeline */
+.tl{padding:8px 16px 10px;display:grid;grid-template-columns:44px minmax(0,1fr);gap:2px 8px;align-items:center}
+.tl span{font:500 .62rem var(--f-mono);letter-spacing:.08em;text-transform:uppercase}
+.tl canvas{width:100%;height:14px;display:block;cursor:pointer;border-radius:2px}
+.tl .ax{grid-column:2;display:flex;justify-content:space-between;font:400 .62rem var(--f-mono);color:var(--muted)}
+/* log */
+.log{position:fixed;right:16px;bottom:16px;width:min(720px,calc(100% - 32px));max-height:60vh;background:var(--surface);border:1px solid var(--ink);border-radius:8px;z-index:20;display:none;flex-direction:column}
+.log.open{display:flex}
+.log header{display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid var(--line)}
+.log header b{font-family:var(--f-display);font-size:1.05rem;flex:1}
+.log .scroll{overflow:auto;padding:0 12px 12px}
+.log table{border-collapse:collapse;width:100%;font-size:.8rem;min-width:620px}
+.log th{font:500 .62rem var(--f-mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);text-align:left;padding:8px 6px;position:sticky;top:0;background:var(--surface)}
+.log td{padding:5px 6px;border-top:1px solid var(--line);font-family:var(--f-mono);font-size:.74rem;vertical-align:top}
+.log td input{width:100%;background:transparent;border:0;border-bottom:1px solid var(--line);font:inherit}
+.log td button{background:none;border:0;color:var(--muted)}
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:8px 14px;border-radius:6px;font-size:.85rem;opacity:0;pointer-events:none;transition:opacity .2s;z-index:30}
+.toast.show{opacity:1}
+@media (max-width:960px){
+  body{overflow:auto}
+  html,body{height:auto}
+  .app{height:auto;display:flex;flex-direction:column}
+  .main{grid-template-columns:1fr;display:flex;flex-direction:column}
+  .stage{height:62vh;min-height:360px;order:-1}
+  .bar{padding:10px 16px}
+  .rail,.ins{overflow:visible}
+}
+@media (prefers-reduced-motion: reduce){.toast{transition:none}}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="bar">
+    <div class="brand">Latent Atlas<small>06 · 1000 frames · 3 autoencoders</small></div>
+    <div class="seg" id="seg" role="group" aria-label="Dataset"></div>
+    <label class="f">Projection<select id="selProj"></select></label>
+    <label class="f">Clustering<select id="selClu"></select></label>
+    <label class="f">Colour by<select id="selCol">
+      <option value="cluster">Cluster</option><option value="time">Video time</option><option value="label">Hand-picked categories</option></select></label>
+    <div class="sp"></div>
+    <button class="btn" id="btnLog">Experiment log <span id="logN">0</span></button>
+    <button class="btn" id="btnPng">Export PNG</button>
+    <button class="btn primary" id="btnSave">Save this view</button>
+    <button class="btn" id="btnTheme" aria-label="Toggle light and dark">◐</button>
+  </div>
+
+  <div class="main">
+    <aside class="rail" id="rail"></aside>
+    <div class="stage" id="stage">
+      <canvas id="map" aria-label="2D map of frames"></canvas>
+      <div class="tip" id="tip"><div id="tipImg"></div><span id="tipTxt"></span></div>
+      <div class="sel" id="sel">
+        <h2>Selection</h2><small id="selInfo"></small>
+        <input id="selName" placeholder="Name this group of frames">
+        <div class="row"><button class="btn primary" id="selSave">Add to log</button><button class="btn" id="selClear">Cancel</button></div>
+      </div>
+      <div class="hint">Scroll to zoom · drag to pan · Shift+drag to select · ←→ step frames · 1 2 3 switch dataset · double-click to reset</div>
+    </div>
+    <aside class="ins" id="ins"></aside>
+  </div>
+
+  <div class="tl" id="tl">
+    <span style="color:var(--video)">video</span><canvas data-r="video" height="14"></canvas>
+    <span style="color:var(--depth)">depth</span><canvas data-r="depth" height="14"></canvas>
+    <span style="color:var(--edges)">edges</span><canvas data-r="edges" height="14"></canvas>
+    <div class="ax"><span>frame 0001</span><span>the chosen clustering along the video, for each dataset</span><span>frame 1000</span></div>
+  </div>
+</div>
+
+<div class="log" id="log" role="dialog" aria-label="Experiment log">
+  <header><b>Experiment log</b><button class="btn" id="logCsv">Export CSV</button><button class="btn" id="logClear">Clear</button><button class="btn" id="logClose">Close</button></header>
+  <div class="scroll"><table><thead><tr><th>Time</th><th>Dataset</th><th>Projection</th><th>Clustering</th><th>Clusters</th><th>Silhouette</th><th>Trust</th><th>Time coh.</th><th>NMI·hand</th><th>Note</th><th></th></tr></thead><tbody id="logBody"></tbody></table></div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script src="data.js"></script>
+<script src="names.js"></script>
+<script>
+(() => {
+const A = window.ATLAS, N = A.frames.length;
+const DS = ["video", "depth", "edges"];
+const EXT = {video: ".jpg", depth: ".png", edges: ".png"};
+const PROJ = {pca: "PCA", tsne: "t-SNE", umap_compact: "UMAP compact (15)", umap_loose: "UMAP loose (50)"};
+const CLU = {kmeans: "K-means (k=6)", ward: "Ward hierarchical", hdbscan: "HDBSCAN", gmm: "GMM (k=6)"};
+const LABELS = {table: "table", column: "column", ordered: "ordered", chaotic: "disordered"};
+const PAL = ["#E69F00", "#56B4E9", "#009E73", "#CC79A7", "#D55E00", "#7A78E0"];
+const NOISE = "#8A94A0";
+const LABCOL = {table: "#E69F00", column: "#56B4E9", ordered: "#009E73", chaotic: "#D55E00"};
+const $ = s => document.querySelector(s);
+const S = {ds: "video", proj: "tsne", clu: "kmeans", col: "cluster", sel: -1, hover: -1, iso: null, box: null, boxSet: []};
+
+const safe = {
+  get(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch (e) { return d; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
+};
+let log = safe.get("atlas-log", []);
+
+// ---------- helpers
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const stem = i => A.frames[i];
+const img = (ds, i) => `../data/${ds}/${stem(i)}${EXT[ds]}`;
+const rec = (ds, i) => `recon/${ds}/${stem(i)}${EXT[ds]}`;
+const clusters = () => A.datasets[S.ds].clusters[S.clu];
+const cname = (ds, clu, c) => c < 0 ? "Noise" : (safe.get(`atlas-names-${ds}-${clu}`, {})[c] || ((window.DEFAULT_NAMES || {})[ds] || {})[clu]?.[c] || "C" + c);
+const ccol = c => c < 0 ? NOISE : PAL[c % PAL.length];
+const dsColor = d => css("--" + d);
+function toast(t) { const e = $("#toast"); e.textContent = t; e.classList.add("show"); clearTimeout(toast.t); toast.t = setTimeout(() => e.classList.remove("show"), 1800); }
+function timeColor(t) { // 0..1 -> blue..teal..yellow ramp
+  const st = [[48, 18, 110], [27, 120, 170], [30, 170, 130], [240, 200, 60]];
+  const x = t * 3, k = Math.min(2, Math.floor(x)), f = x - k;
+  return "rgb(" + st[k].map((v, j) => Math.round(v + (st[k + 1][j] - v) * f)).join(",") + ")";
+}
+function pointColor(i) {
+  if (S.col === "time") return timeColor(i / (N - 1));
+  if (S.col === "label") { const l = A.labels[i]; return l ? LABCOL[l] : NOISE; }
+  return ccol(clusters()[i]);
+}
+
+// ---------- controls
+DS.forEach(d => {
+  const b = document.createElement("button");
+  b.innerHTML = `<i style="background:var(--${d})"></i>${d}`; b.dataset.d = d; b.setAttribute("aria-pressed", d === S.ds);
+  b.onclick = () => setDs(d); $("#seg").append(b);
+});
+Object.entries(PROJ).forEach(([k, v]) => $("#selProj").add(new Option(v, k, false, k === S.proj)));
+Object.entries(CLU).forEach(([k, v]) => $("#selClu").add(new Option(v, k)));
+$("#selProj").onchange = e => { S.proj = e.target.value; retarget(true); };
+$("#selClu").onchange = e => { S.clu = e.target.value; S.iso = null; refresh(); };
+$("#selCol").onchange = e => { S.col = e.target.value; draw(); drawTl(); };
+function setDs(d) {
+  S.ds = d; S.iso = null;
+  document.querySelectorAll("#seg button").forEach(b => b.setAttribute("aria-pressed", b.dataset.d === d));
+  retarget(true); refresh();
+}
+$("#btnTheme").onclick = () => {
+  const r = document.documentElement, dark = getComputedStyle(r).colorScheme.includes("dark") || r.dataset.theme === "dark";
+  r.dataset.theme = dark ? "light" : "dark"; draw(); drawTl();
+};
+
+// ---------- map
+const cv = $("#map"), ctx = cv.getContext("2d");
+let W = 0, Hh = 0, dpr = 1;
+const V = {s: 1, x: 0, y: 0};
+let cur = new Float32Array(N * 2), from = new Float32Array(N * 2), to = new Float32Array(N * 2), t0 = 0, anim = false;
+const sprites = {};
+DS.forEach(d => { const im = new Image(); im.src = `sprite_${d}.jpg`; im.onload = draw; sprites[d] = im; });
+function fit() { V.s = Math.min(W, Hh) / 2 * 0.88; V.x = W / 2; V.y = Hh / 2; }
+function resize() {
+  const r = cv.getBoundingClientRect(); dpr = window.devicePixelRatio || 1;
+  const first = !W; W = r.width; Hh = r.height;
+  cv.width = W * dpr; cv.height = Hh * dpr; if (first) fit(); draw();
+}
+new ResizeObserver(resize).observe(cv);
+const wx = x => x * V.s + V.x, wy = y => -y * V.s + V.y;
+function retarget(animate) {
+  const P = A.datasets[S.ds].proj[S.proj];
+  from.set(cur); for (let i = 0; i < N; i++) { to[i * 2] = P[i][0]; to[i * 2 + 1] = P[i][1]; }
+  if (!animate || matchMedia("(prefers-reduced-motion: reduce)").matches) { cur.set(to); draw(); return; }
+  t0 = performance.now(); if (!anim) { anim = true; requestAnimationFrame(step); }
+}
+function step(now) {
+  const t = Math.min(1, (now - t0) / 650), e = t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+  for (let i = 0; i < N * 2; i++) cur[i] = from[i] + (to[i] - from[i]) * e;
+  draw(); if (t < 1) requestAnimationFrame(step); else anim = false;
+}
+function inView(px, py, m = 40) { return px > -m && px < W + m && py > -m && py < Hh + m; }
+function draw() {
+  if (!W) return;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.fillStyle = css("--map"); ctx.fillRect(0, 0, W, Hh);
+  // grid
+  ctx.strokeStyle = css("--grid"); ctx.lineWidth = 1; ctx.beginPath();
+  const g = V.s / 4; for (let x = ((V.x % g) + g) % g; x < W; x += g) { ctx.moveTo(x, 0); ctx.lineTo(x, Hh); }
+  for (let y = ((V.y % g) + g) % g; y < Hh; y += g) { ctx.moveTo(0, y); ctx.lineTo(W, y); }
+  ctx.stroke();
+  const cl = clusters(), thumbs = V.s > 1600 && sprites[S.ds].complete;
+  const tw = Math.min(2.4, V.s / 1600) * 64, th = tw * 36 / 64;
+  const order = []; for (let i = 0; i < N; i++) order.push(i);
+  const dimmed = i => S.iso !== null && cl[i] !== S.iso;
+  const inBox = new Set(S.boxSet);
+  // neighbour lines
+  if (S.sel >= 0) {
+    ctx.strokeStyle = css("--ink"); ctx.globalAlpha = .35; ctx.lineWidth = 1; ctx.beginPath();
+    for (const j of A.datasets[S.ds].knn[S.sel]) { ctx.moveTo(wx(cur[S.sel * 2]), wy(cur[S.sel * 2 + 1])); ctx.lineTo(wx(cur[j * 2]), wy(cur[j * 2 + 1])); }
+    ctx.stroke(); ctx.globalAlpha = 1;
+  }
+  for (const pass of [0, 1]) for (const i of order) {
+    const d = dimmed(i); if ((pass === 0) !== d) continue;
+    const px = wx(cur[i * 2]), py = wy(cur[i * 2 + 1]); if (!inView(px, py)) continue;
+    ctx.globalAlpha = d ? .13 : 1;
+    if (thumbs && !d) {
+      const k = i, sx = (k % 40) * 64, sy = Math.floor(k / 40) * 36;
+      ctx.drawImage(sprites[S.ds], sx, sy, 64, 36, px - tw / 2, py - th / 2, tw, th);
+      ctx.strokeStyle = pointColor(i); ctx.lineWidth = 2; ctx.strokeRect(px - tw / 2, py - th / 2, tw, th);
+    } else {
+      ctx.fillStyle = pointColor(i); ctx.beginPath(); ctx.arc(px, py, d ? 2.5 : 3.6, 0, 6.283); ctx.fill();
+    }
+    if (inBox.has(i)) { ctx.globalAlpha = 1; ctx.strokeStyle = css("--ink"); ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(px, py, 6.5, 0, 6.283); ctx.stroke(); }
+  }
+  ctx.globalAlpha = 1;
+  for (const i of [S.hover, S.sel]) if (i >= 0) {
+    const px = wx(cur[i * 2]), py = wy(cur[i * 2 + 1]);
+    ctx.strokeStyle = css("--ink"); ctx.lineWidth = i === S.sel ? 2.5 : 1.5; ctx.beginPath(); ctx.arc(px, py, i === S.sel ? 9 : 7, 0, 6.283); ctx.stroke();
+  }
+  if (S.box) { const b = S.box; ctx.fillStyle = "rgba(47,91,234,.12)"; ctx.strokeStyle = css("--accent"); ctx.setLineDash([5, 4]);
+    ctx.fillRect(b.x0, b.y0, b.x1 - b.x0, b.y1 - b.y0); ctx.strokeRect(b.x0, b.y0, b.x1 - b.x0, b.y1 - b.y0); ctx.setLineDash([]); }
+}
+function nearest(mx, my, r = 10) {
+  let b = -1, bd = r * r;
+  for (let i = 0; i < N; i++) { const dx = wx(cur[i * 2]) - mx, dy = wy(cur[i * 2 + 1]) - my, d = dx * dx + dy * dy; if (d < bd) { bd = d; b = i; } }
+  return b;
+}
+let drag = null, moved = false;
+cv.addEventListener("pointerdown", e => {
+  const r = cv.getBoundingClientRect(), mx = e.clientX - r.left, my = e.clientY - r.top; cv.setPointerCapture(e.pointerId); moved = false;
+  if (e.shiftKey) { S.box = {x0: mx, y0: my, x1: mx, y1: my}; drag = {box: true}; }
+  else { drag = {x: e.clientX, y: e.clientY, vx: V.x, vy: V.y}; cv.classList.add("drag"); }
+});
+cv.addEventListener("pointermove", e => {
+  const r = cv.getBoundingClientRect(), mx = e.clientX - r.left, my = e.clientY - r.top;
+  if (drag && drag.box) { S.box.x1 = mx; S.box.y1 = my; draw(); return; }
+  if (drag) { const dx = e.clientX - drag.x, dy = e.clientY - drag.y; if (Math.abs(dx) + Math.abs(dy) > 3) moved = true; V.x = drag.vx + dx; V.y = drag.vy + dy; draw(); return; }
+  const h = nearest(mx, my); if (h !== S.hover) { S.hover = h; draw(); }
+  const tip = $("#tip");
+  if (h >= 0) {
+    const col = h % 40, row = Math.floor(h / 40);
+    $("#tipImg").style.cssText = `width:128px;height:72px;background-image:url(sprite_${S.ds}.jpg);background-size:${40 * 128}px ${25 * 72}px;background-position:-${col * 128}px -${row * 72}px`;
+    const c = clusters()[h]; $("#tipTxt").textContent = `${stem(h).slice(-4)} · ${cname(S.ds, S.clu, c)}`;
+    tip.style.display = "block"; tip.style.left = Math.min(mx + 14, W - 140) + "px"; tip.style.top = Math.min(my + 14, Hh - 100) + "px";
+  } else tip.style.display = "none";
+});
+cv.addEventListener("pointerup", e => {
+  cv.classList.remove("drag");
+  if (drag && drag.box) {
+    const b = S.box, x0 = Math.min(b.x0, b.x1), x1 = Math.max(b.x0, b.x1), y0 = Math.min(b.y0, b.y1), y1 = Math.max(b.y0, b.y1);
+    S.boxSet = []; for (let i = 0; i < N; i++) { const px = wx(cur[i * 2]), py = wy(cur[i * 2 + 1]); if (px >= x0 && px <= x1 && py >= y0 && py <= y1) S.boxSet.push(i); }
+    S.box = null; showSel(); draw();
+  } else if (drag && !moved) {
+    const r = cv.getBoundingClientRect(), h = nearest(e.clientX - r.left, e.clientY - r.top, 12); select(h);
+  }
+  drag = null;
+});
+cv.addEventListener("pointerleave", () => { if (!drag) { S.hover = -1; $("#tip").style.display = "none"; draw(); } });
+cv.addEventListener("wheel", e => {
+  e.preventDefault(); const r = cv.getBoundingClientRect(), mx = e.clientX - r.left, my = e.clientY - r.top;
+  const f = Math.exp(-e.deltaY * 0.0015), ns = Math.max(60, Math.min(9000, V.s * f)), k = ns / V.s;
+  V.x = mx - (mx - V.x) * k; V.y = my - (my - V.y) * k; V.s = ns; draw();
+}, {passive: false});
+cv.addEventListener("dblclick", () => { fit(); draw(); });
+function showSel() {
+  const el = $("#sel"); if (!S.boxSet.length) { el.style.display = "none"; return; }
+  const cl = clusters(), cnt = {}; S.boxSet.forEach(i => cnt[cl[i]] = (cnt[cl[i]] || 0) + 1);
+  $("#selInfo").textContent = `${S.boxSet.length} frames · ` + Object.entries(cnt).sort((a, b) => b[1] - a[1]).map(([c, n]) => `${cname(S.ds, S.clu, +c)} ${n}`).join(" / ");
+  el.style.display = "flex";
+}
+$("#selClear").onclick = () => { S.boxSet = []; showSel(); draw(); };
+$("#selSave").onclick = () => {
+  const nm = $("#selName").value.trim() || "Unnamed group";
+  addLog(`Selection "${nm}": ${S.boxSet.length} frames (${S.boxSet.slice(0, 6).map(i => stem(i).slice(-4)).join(",")}${S.boxSet.length > 6 ? "…" : ""})`);
+  $("#selName").value = ""; S.boxSet = []; showSel(); draw();
+};
+
+// ---------- selection / inspector
+function select(i) {
+  S.sel = i; renderIns(); draw(); drawTl(); if (i < 0) return;
+  const px = wx(cur[i * 2]), py = wy(cur[i * 2 + 1]);
+  if (!inView(px, py, -20)) { V.x += W / 2 - px; V.y += Hh / 2 - py; draw(); }
+}
+function renderIns() {
+  const el = $("#ins"), i = S.sel;
+  if (i < 0) { el.innerHTML = `<h2>Frame inspector</h2><div class="empty">Click a point on the map, or click the timeline. You will see the frame as video, depth and edges, its reconstruction from the current dataset, its cluster in each of the three datasets, and its nearest neighbours.</div>`; return; }
+  const chips = DS.map(d => { const c = A.datasets[d].clusters[S.clu][i];
+    return `<div class="chip"><b style="color:var(--${d})">${d}</b><i style="background:${ccol(c)}"></i>${cname(d, S.clu, c)}</div>`; }).join("");
+  const lab = A.labels[i] ? `<div class="chip"><b>05</b><i style="background:${LABCOL[A.labels[i]]}"></i>${LABELS[A.labels[i]]}(hand-picked)</div>` : "";
+  const nn = A.datasets[S.ds].knn[i].map(j => `<img data-i="${j}" src="${img(S.ds, j)}" alt="${stem(j)}" title="${stem(j).slice(-4)}">`).join("");
+  el.innerHTML = `<h2>Frame inspector</h2><div class="big">${stem(i).slice(-4)}<span class="cap" style="margin-left:8px">/ 1000</span></div>
+    <div class="pics">${["video", "depth", "edges"].map(d => `<figure><img src="${img(d, i)}" alt="${d}"><span class="cap" style="color:var(--${d})">${d}</span></figure>`).join("")}
+    <figure><img src="${rec(S.ds, i)}" alt="reconstruction"><span class="cap">${S.ds} reconstruction</span></figure></div>
+    <div><h2>${CLU[S.clu]}</h2><div class="chips" style="margin-top:6px">${chips}${lab}</div></div>
+    <div><h2>Nearest neighbours in ${S.ds} space</h2><div class="th" style="margin-top:6px;grid-template-columns:repeat(3,1fr)">${nn}</div>
+    <div class="cap" style="margin-top:4px">Frames within 10 of this one are excluded</div></div>`;
+  el.querySelectorAll(".th img").forEach(m => m.onclick = () => select(+m.dataset.i));
+}
+
+// ---------- rail
+function renderRail() {
+  const d = A.datasets[S.ds], row = A.experiments.find(r => r.dataset === S.ds && r.projection === S.proj && r.clustering === S.clu) || {};
+  const f = (v, k = 3) => v == null || Number.isNaN(v) ? "n/a" : (+v).toFixed(k);
+  let h = `<div><h2>This view</h2><dl class="metrics" style="margin:8px 0 0">
+    <dt title="How well separated the clusters are, -1 to 1, higher is better">Silhouette</dt><dd>${f(row.silhouette)}</dd>
+    <dt title="Share of each frame's 10 nearest neighbours that survive the projection; higher is more trustworthy">Trustworthiness</dt><dd>${f(d.trust[S.proj])}</dd>
+    <dt title="Share of neighbouring frame pairs that fall in the same cluster">Time coherence</dt><dd>${f(row.temporal_coherence)}</dd>
+    <dt title="Agreement between clusters and the 80 hand-picked frames, 0 to 1">NMI · hand-picked</dt><dd>${f(row.nmi_vs_05_labels)}</dd>
+    <dt>Noise share</dt><dd>${f(row.noise_frac, 2)}</dd></dl></div><h2>Clusters and archetypes</h2>`;
+  const ids = Object.keys(d.archetypes[S.clu]).map(Number);
+  const sizes = d.cluster_sizes[S.clu];
+  const all = [...ids]; if (sizes["-1"]) all.push(-1);
+  for (const c of all) {
+    const arch = d.archetypes[S.clu][c] || [], outl = d.outliers[S.clu][c] || [];
+    h += `<div class="cl ${S.iso !== null && S.iso !== c ? "dim" : ""}" data-c="${c}">
+      <div class="hd"><span class="sw" style="background:${ccol(c)}"></span>
+      ${c < 0 ? `<span style="flex:1;font-family:var(--f-display);font-weight:700">Noise</span>` : `<input value="${cname(S.ds, S.clu, c)}" aria-label="Cluster name" data-c="${c}">`}
+      <span class="n">${sizes[c]}</span><button class="iso" data-c="${c}" aria-pressed="${S.iso === c}">Only</button></div>
+      ${arch.length ? `<div class="cap">Archetypes · closest to the centre</div><div class="th">${arch.map(i => `<img data-i="${i}" src="${img(S.ds, i)}" loading="lazy" title="${stem(i).slice(-4)}">`).join("")}</div>
+      <div class="cap">Outliers · farthest from the centre</div><div class="th o">${outl.map(i => `<img data-i="${i}" src="${img(S.ds, i)}" loading="lazy" title="${stem(i).slice(-4)}">`).join("")}</div>` : ""}</div>`;
+  }
+  $("#rail").innerHTML = h;
+  $("#rail").querySelectorAll("img").forEach(m => m.onclick = () => select(+m.dataset.i));
+  $("#rail").querySelectorAll(".iso").forEach(b => b.onclick = () => { const c = +b.dataset.c; S.iso = S.iso === c ? null : c; renderRail(); draw(); });
+  $("#rail").querySelectorAll(".cl input").forEach(inp => inp.onchange = () => {
+    const k = `atlas-names-${S.ds}-${S.clu}`, m = safe.get(k, {}); m[inp.dataset.c] = inp.value.trim() || "C" + inp.dataset.c; safe.set(k, m); renderIns(); showSel();
+  });
+}
+
+// ---------- timeline
+function drawTl() {
+  document.querySelectorAll("#tl canvas").forEach(c => {
+    const d = c.dataset.r, r = c.getBoundingClientRect(), dp = window.devicePixelRatio || 1;
+    c.width = r.width * dp; c.height = 14 * dp; const x = c.getContext("2d"); x.setTransform(dp, 0, 0, dp, 0, 0);
+    const cl = A.datasets[d].clusters[S.clu], w = r.width / N;
+    for (let i = 0; i < N; i++) { x.fillStyle = S.col === "label" ? (A.labels[i] ? LABCOL[A.labels[i]] : NOISE) : S.col === "time" ? timeColor(i / (N - 1)) : ccol(cl[i]); x.fillRect(i * w, 0, Math.ceil(w), 14); }
+    if (d === S.ds) { x.strokeStyle = css("--ink"); x.lineWidth = 2; x.strokeRect(1, 1, r.width - 2, 12); }
+    if (S.sel >= 0) { x.fillStyle = css("--ink"); x.fillRect(S.sel * w - 1, 0, 3, 14); }
+  });
+}
+document.querySelectorAll("#tl canvas").forEach(c => c.addEventListener("click", e => {
+  const r = c.getBoundingClientRect(); select(Math.max(0, Math.min(N - 1, Math.floor((e.clientX - r.left) / r.width * N))));
+}));
+new ResizeObserver(drawTl).observe($("#tl"));
+
+// ---------- log, export
+function addLog(note) {
+  const row = A.experiments.find(r => r.dataset === S.ds && r.projection === S.proj && r.clustering === S.clu) || {};
+  log.push({t: new Date().toLocaleString("zh-CN", {hour12: false}), ds: S.ds, proj: S.proj, clu: S.clu, k: row.n_clusters, sil: row.silhouette,
+    tr: A.datasets[S.ds].trust[S.proj].toFixed(3), tc: row.temporal_coherence, nmi: row.nmi_vs_05_labels, note: note || ""});
+  safe.set("atlas-log", log); renderLog(); toast("Added to the experiment log");
+}
+function renderLog() {
+  $("#logN").textContent = log.length;
+  $("#logBody").innerHTML = log.map((r, i) => `<tr><td>${r.t}</td><td>${r.ds}</td><td>${r.proj}</td><td>${r.clu}</td><td>${r.k}</td><td>${r.sil}</td><td>${r.tr}</td><td>${r.tc}</td><td>${r.nmi}</td>
+    <td><input data-i="${i}" value="${(r.note || "").replace(/"/g, "&quot;")}" aria-label="Note"></td><td><button data-d="${i}" aria-label="Delete">✕</button></td></tr>`).join("") || `<tr><td colspan="11" style="padding:14px;color:var(--muted)">No entries yet. Pick a view and press "Save this view".</td></tr>`;
+  $("#logBody").querySelectorAll("input").forEach(inp => inp.onchange = () => { log[+inp.dataset.i].note = inp.value; safe.set("atlas-log", log); });
+  $("#logBody").querySelectorAll("button").forEach(b => b.onclick = () => { log.splice(+b.dataset.d, 1); safe.set("atlas-log", log); renderLog(); });
+}
+function download(name, blob) { const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name; document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 2000); }
+$("#btnSave").onclick = () => addLog("");
+$("#btnLog").onclick = () => $("#log").classList.toggle("open");
+$("#logClose").onclick = () => $("#log").classList.remove("open");
+$("#logClear").onclick = () => { log = []; safe.set("atlas-log", log); renderLog(); };
+$("#logCsv").onclick = () => {
+  const head = "time,dataset,projection,clustering,n_clusters,silhouette,trustworthiness,temporal_coherence,nmi_vs_05,note";
+  const rows = log.map(r => [r.t, r.ds, r.proj, r.clu, r.k, r.sil, r.tr, r.tc, r.nmi, '"' + (r.note || "").replace(/"/g, '""') + '"'].join(","));
+  download("atlas-log.csv", new Blob(["﻿" + head + "\n" + rows.join("\n")], {type: "text/csv"}));
+};
+$("#btnPng").onclick = () => cv.toBlob(b => download(`atlas_${S.ds}_${S.proj}_${S.clu}.png`, b));
+
+// ---------- keys
+addEventListener("keydown", e => {
+  if (e.target.matches("input,select")) return;
+  const k = e.key;
+  if (k === "1" || k === "2" || k === "3") setDs(DS[+k - 1]);
+  else if (k === "ArrowRight") select(Math.min(N - 1, (S.sel < 0 ? -1 : S.sel) + 1));
+  else if (k === "ArrowLeft") select(Math.max(0, (S.sel < 0 ? 1 : S.sel) - 1));
+  else if (k === "p" || k === "P") { const ks = Object.keys(PROJ); S.proj = ks[(ks.indexOf(S.proj) + 1) % ks.length]; $("#selProj").value = S.proj; retarget(true); refresh(); }
+  else if (k === "c" || k === "C") { const ks = Object.keys(CLU); S.clu = ks[(ks.indexOf(S.clu) + 1) % ks.length]; $("#selClu").value = S.clu; S.iso = null; refresh(); }
+  else if (k === "Escape") { S.sel = -1; S.boxSet = []; S.iso = null; showSel(); renderIns(); renderRail(); draw(); drawTl(); }
+});
+
+function refresh() { renderRail(); renderIns(); draw(); drawTl(); showSel(); }
+retarget(false); renderLog(); refresh();
+(() => { const q = new URLSearchParams(location.search); if (DS.includes(q.get("ds"))) setDs(q.get("ds")); retarget(false);
+  if (q.get("zoom")) { V.s *= +q.get("zoom"); } const f = parseInt(q.get("frame"), 10); if (f >= 1 && f <= N) select(f - 1); else draw(); })();
+})();
+</script>
+</body>
+</html>
